@@ -129,14 +129,8 @@ class ChrootRuntime(private val context: Context) {
             )
         }
 
-        // Sources list for Ubuntu 24.04
-        File(rootfsDir, "etc/apt/sources.list").writeText(
-            """
-            deb http://ports.ubuntu.com/ubuntu-ports noble main restricted universe multiverse
-            deb http://ports.ubuntu.com/ubuntu-ports noble-updates main restricted universe multiverse
-            deb http://ports.ubuntu.com/ubuntu-ports noble-security main restricted universe multiverse
-            """.trimIndent().trim() + "\n"
-        )
+
+
 
         // Make sure apt works without _apt sandbox user
         File(rootfsDir, "etc/apt/apt.conf.d/99-disable-sandbox").writeText("APT::Sandbox::User \"root\";\n")
@@ -172,44 +166,93 @@ class ChrootRuntime(private val context: Context) {
                 onProgress(0.0, "Mounting rootfs...")
                 ensureMounts()
 
-                onProgress(0.05, "Updating package lists...")
-                if (execChroot("apt-get update -y", onLog) != 0) {
+                onProgress(0.05, "Fixing Android network permissions...")
+                execChroot("groupadd -g 3003 inet 2>/dev/null || true; usermod -a -G inet _apt 2>/dev/null || true; usermod -a -G inet root 2>/dev/null || true", onLog)
+
+                onProgress(0.05, "Repairing interrupted packages...")
+                execChroot("DEBIAN_FRONTEND=noninteractive dpkg --configure -a", onLog)
+
+                onProgress(0.05, "Updating package index...")
+                if (execChroot("DEBIAN_FRONTEND=noninteractive apt-get update", onLog) != 0) {
                     throw IllegalStateException("Package index update failed")
                 }
 
-                onProgress(0.1, "Installing core tools...")
-                if (execChroot(
-                    "DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC apt-get install -y --no-install-recommends " +
-                            "locales ca-certificates wget curl dbus-x11",
-                    onLog
-                ) != 0) throw IllegalStateException("Core package installation failed")
+                onProgress(0.1, "Installing Android kernel compatibility...")
+                if (!ensureCloseRangeCompatibility(onLog)) {
+                    throw IllegalStateException("Android kernel compatibility setup failed")
+                }
+
+                onProgress(0.15, "Installing core tools...")
+                if (!isPackageInstalled("x11-utils")) {
+                    if (execChroot(
+                        "DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC apt-get install -y --no-install-recommends " +
+                                "locales ca-certificates wget curl dbus-x11 x11-utils",
+                        onLog
+                    ) != 0) {
+                        execChroot("DEBIAN_FRONTEND=noninteractive dpkg --configure -a", onLog)
+                        if (!isPackageInstalled("x11-utils")) throw IllegalStateException("Core package installation failed")
+                    }
+                }
 
                 onProgress(0.2, "Installing Mesa GPU drivers...")
-                if (execChroot(
-                    "DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC apt-get install -y --no-install-recommends " +
-                            "mesa-vulkan-drivers mesa-opencl-icd libgl1-mesa-dri libglx-mesa0 vulkan-tools",
-                    onLog
-                ) != 0) Log.w(TAG, "Mesa packages unavailable; desktop will use available software rendering")
+                if (!isPackageInstalled("mesa-vulkan-drivers")) {
+                    if (execChroot(
+                        "DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC apt-get install -y --no-install-recommends " +
+                                "mesa-vulkan-drivers mesa-opencl-icd libgl1-mesa-dri libglx-mesa0 libgl1 vulkan-tools",
+                        onLog
+                    ) != 0) {
+                        execChroot("DEBIAN_FRONTEND=noninteractive dpkg --configure -a", onLog)
+                        Log.w(TAG, "Mesa packages unavailable; desktop will use available software rendering")
+                    }
+                }
 
                 onProgress(0.4, "Installing desktop environment...")
-                val dePackages = when (desktopEnv) {
-                    "lxqt" -> "lxqt qterminal pcmanfm-qt featherpad"
-                    "mate" -> "mate-desktop-environment mate-terminal"
-                    "kde" -> "plasma-desktop konsole dolphin"
-                    else -> "xfce4 xfce4-terminal xfce4-whiskermenu-plugin thunar mousepad"
+                val checkPkg = when (desktopEnv) {
+                    "lxqt" -> "lxqt"
+                    "mate" -> "mate-desktop-environment"
+                    "kde" -> "plasma-desktop"
+                    else -> "xfce4"
                 }
-                if (execChroot(
-                    "DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC apt-get install -y --no-install-recommends $dePackages",
-                    onLog
-                ) != 0) throw IllegalStateException("Desktop package installation failed")
+                if (!isPackageInstalled(checkPkg)) {
+                    val dePackages = when (desktopEnv) {
+                        "lxqt" -> "lxqt qterminal pcmanfm-qt featherpad"
+                        "mate" -> "mate-desktop-environment mate-terminal"
+                        "kde" -> "plasma-desktop konsole dolphin"
+                        else -> "xfce4 xfce4-terminal xfce4-whiskermenu-plugin thunar mousepad"
+                    }
+                    if (execChroot(
+                        "DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC apt-get install -y --no-install-recommends $dePackages",
+                        onLog
+                    ) != 0) {
+                        execChroot("DEBIAN_FRONTEND=noninteractive dpkg --configure -a", onLog)
+                        if (!isPackageInstalled(checkPkg)) throw IllegalStateException("Desktop package installation failed")
+                    }
+                }
+
+                onProgress(0.6, "Installing HiDPI icon theme...")
+                if (!isPackageInstalled("papirus-icon-theme")) {
+                    if (execChroot(
+                        "DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC apt-get install -y --no-install-recommends " +
+                                "papirus-icon-theme adwaita-icon-theme-full fonts-noto-core",
+                        onLog
+                    ) != 0) {
+                        execChroot("DEBIAN_FRONTEND=noninteractive dpkg --configure -a", onLog)
+                        Log.w(TAG, "HiDPI icon theme install failed; will use default icons")
+                    }
+                }
 
                 onProgress(0.8, "Installing Desktop Essentials tools...")
-                val essentialsExit = execChroot(
-                    "DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC apt-get install -y --no-install-recommends " +
-                            "git nano htop wget curl python3 python3-pip openssh-client",
-                    onLog
-                )
-                if (essentialsExit != 0) throw IllegalStateException("Desktop Essentials package installation failed")
+                if (!isPackageInstalled("htop")) {
+                    val essentialsExit = execChroot(
+                        "DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC apt-get install -y --no-install-recommends " +
+                                "git nano htop wget curl python3 python3-pip openssh-client",
+                        onLog
+                    )
+                    if (essentialsExit != 0) {
+                        execChroot("DEBIAN_FRONTEND=noninteractive dpkg --configure -a", onLog)
+                        if (!isPackageInstalled("htop")) throw IllegalStateException("Desktop Essentials package installation failed")
+                    }
+                }
 
                 onProgress(0.9, "Cleaning up...")
                 execChroot("apt-get clean", onLog)
@@ -299,18 +342,14 @@ class ChrootRuntime(private val context: Context) {
             return
         }
 
-        if (desktopEnv == "xfce4") {
-            XfceMobileProfile.install(
-                context = context,
-                homeDir = File(rootfsDir, "root"),
-                wallpaperFile = File(
-                    rootfsDir,
-                    "usr/share/backgrounds/droiddesk/ubuntu-touch.jpg",
-                ),
-                wallpaperPathInSession =
-                    "/usr/share/backgrounds/droiddesk/ubuntu-touch.jpg",
-            )
+        // Existing rootfs installations predate the compatibility library.
+        // Build it once before starting XFCE so they do not need a reinstall.
+        if (!ensureCloseRangeCompatibility()) {
+            Log.e(TAG, "Cannot start chroot desktop: close_range compatibility setup failed")
+            return
         }
+
+        if (desktopEnv == "xfce4") installChrootXfceMobileProfile()
 
         ensureMounts()
         bindX11Socket()
@@ -331,21 +370,79 @@ class ChrootRuntime(private val context: Context) {
             export TMPDIR=/tmp
             export HOME=/root
             export PREFIX=/usr
-            export LD_PRELOAD=/usr/local/lib/libclose_range_hack.so
+            # This is a normal Ubuntu userspace, not the relocated native
+            # Termux runtime.  Load only the glibc compatibility shim built
+            # for this rooted Ubuntu filesystem.
+            export LD_PRELOAD=/usr/local/lib/libdroiddesk-close-range.so
 
             # Source DroidDesk environment
             . /etc/profile.d/droiddesk-ha.sh 2>/dev/null || true
 
-            # Session D-Bus
-            export DBUS_SESSION_BUS_ADDRESS=unix:path=/tmp/dbus-session
-            rm -f /tmp/dbus-session
-            dbus-daemon --session --address="${'$'}DBUS_SESSION_BUS_ADDRESS" --fork --nopidfile
-
             # Make sure X11 socket dir exists in case bind mount was late
             mkdir -p /tmp/.X11-unix
 
+            # ── Wait for X server to be ready with the correct resolution ──
+            # The LorieView X server may still be initializing when the chroot
+            # process starts. Poll until the socket exists and xdpyinfo reports
+            # the phone's scaled resolution instead of the 1280x1024 fallback.
+            echo "DIAG: Waiting for X server on DISPLAY=:0 ..."
+            for attempt in ${'$'}(seq 1 50); do
+                if [ -e /tmp/.X11-unix/X0 ]; then
+                    current_res=${'$'}(xdpyinfo 2>/dev/null | grep 'dimensions:' | awk '{print ${'$'}2}')
+                    if [ -n "${'$'}current_res" ] && [ "${'$'}current_res" != "1280x1024" ]; then
+                        echo "DIAG: X server ready at ${'$'}current_res"
+                        break
+                    fi
+                fi
+                sleep 0.1
+            done
+
             echo "DIAG: Starting $desktopEnv in chroot on DISPLAY=:0 ..."
-            exec dbus-run-session -- $deBin
+
+            # ── HiDPI configuration for phone screens ──
+            # Set X resources: font DPI and cursor size
+            cat > ~/.Xresources << 'XRES'
+Xft.dpi: 140
+Xft.antialias: 1
+Xft.hinting: 1
+Xft.hintstyle: hintslight
+Xft.rgba: rgb
+Xcursor.size: 32
+XRES
+            xrdb -merge ~/.Xresources 2>/dev/null || true
+            xsetroot -cursor_name left_ptr 2>/dev/null || true
+
+            # Force xrandr to refresh screen geometry so xfwm4 knows the
+            # correct resolution for maximize calculations
+            xrandr --auto 2>/dev/null || true
+
+            # Disable GTK client-side decorations so all apps use xfwm4's
+            # title bar (whose maximize button actually works on Xwayland)
+            export GTK_CSD=0
+
+            # Create a wrapper that starts the DE and applies settings after
+            # xfconfd is running on the same D-Bus session
+            DE_BIN="$deBin"
+            cat > /tmp/droiddesk-session.sh << SESSEOF
+#!/bin/bash
+# Apply HiDPI xfconf settings after xfconfd has started
+(
+    sleep 5
+    if command -v xfconf-query >/dev/null 2>&1; then
+        xfconf-query -c xsettings -p /Xft/DPI -s 140 -n -t int 2>/dev/null || true
+        xfconf-query -c xsettings -p /Net/IconThemeName -s Papirus -n -t string 2>/dev/null || true
+        xfconf-query -c xsettings -p /Gtk/FontName -s 'Sans 12' -n -t string 2>/dev/null || true
+        xfconf-query -c xsettings -p /Gtk/CursorThemeSize -s 32 -n -t int 2>/dev/null || true
+    fi
+    # Refresh xrandr again after XFCE panels have loaded
+    xrandr --auto 2>/dev/null || true
+) &
+exec ${'$'}DE_BIN
+SESSEOF
+            chmod +x /tmp/droiddesk-session.sh
+
+            # dbus-run-session owns the one session bus for Xfce
+            exec dbus-run-session -- /tmp/droiddesk-session.sh
         """.trimIndent()
 
         Log.i(TAG, "Starting chroot session for $desktopEnv")
@@ -370,6 +467,99 @@ class ChrootRuntime(private val context: Context) {
                 Log.d(TAG, "Chroot desktop output stream closed")
             }
         }.start()
+    }
+
+    /**
+     * Stage the profile as the app user, then copy it into the root-owned
+     * Ubuntu filesystem through su.  apt makes /root and /usr root-owned, so
+     * writing the profile directly from Kotlin fails on real rooted devices.
+     */
+    private fun installChrootXfceMobileProfile() {
+        val stagingDir = File(context.cacheDir, "droiddesk-xfce-profile")
+        val stagingHome = File(stagingDir, "root")
+        val stagingWallpaper = File(stagingDir, "ubuntu-touch.jpg")
+        val sessionWallpaper = "/usr/share/backgrounds/droiddesk/ubuntu-touch.jpg"
+
+        val staged = XfceMobileProfile.install(
+            context = context,
+            homeDir = stagingHome,
+            wallpaperFile = stagingWallpaper,
+            wallpaperPathInSession = sessionWallpaper,
+        )
+        if (!staged) {
+            Log.w(TAG, "Could not stage the XFCE mobile profile; starting with stock XFCE")
+            return
+        }
+
+        val chrootHome = File(rootfsDir, "root")
+        val chrootWallpaper = File(rootfsDir, sessionWallpaper.removePrefix("/"))
+        val command = """
+            set -e
+            mkdir -p ${shellQuote(chrootHome.absolutePath)}
+            mkdir -p ${shellQuote(chrootWallpaper.parentFile!!.absolutePath)}
+            cp -f ${shellQuote(stagingWallpaper.absolutePath)} ${shellQuote(chrootWallpaper.absolutePath)}
+            chmod 0644 ${shellQuote(chrootWallpaper.absolutePath)}
+            cp -R ${shellQuote(File(stagingHome, ".config").absolutePath)} ${shellQuote(chrootHome.absolutePath)}
+            chown -R 0:0 ${shellQuote(File(chrootHome, ".config").absolutePath)}
+        """.trimIndent()
+
+        try {
+            rootShell.exec(command)
+            if (!chrootWallpaper.exists()) {
+                Log.w(TAG, "XFCE wallpaper was not copied into the chroot")
+            }
+        } catch (error: Exception) {
+            Log.e(TAG, "Failed to install XFCE mobile profile into chroot", error)
+        }
+    }
+
+    /**
+     * Android 5.4-derived kernels reject Ubuntu glibc's close_range() call
+     * with EINVAL. GLib then cannot spawn any XFCE process. This tiny
+     * glibc-side preload returns ENOSYS instead, so GLib uses its own safe
+     * file-descriptor-walk fallback. It is only used inside the rooted Ubuntu
+     * chroot; Termux's Android-native runtime is unaffected.
+     */
+    private fun ensureCloseRangeCompatibility(onLog: (String) -> Unit = {}): Boolean {
+        val target = File(rootfsDir, "usr/local/lib/libdroiddesk-close-range.so")
+        if (target.exists()) return true
+
+        return try {
+            val stagingDir = File(context.cacheDir, "droiddesk-close-range").apply { mkdirs() }
+            val stagedSource = File(stagingDir, "close_range_compat.c")
+            context.assets.open("droiddesk/close_range_compat.c").use { input ->
+                stagedSource.outputStream().use(input::copyTo)
+            }
+
+            val sourceInRootfs = File(rootfsDir, "usr/local/src/droiddesk/close_range_compat.c")
+            rootShell.exec(
+                "mkdir -p ${shellQuote(sourceInRootfs.parentFile!!.absolutePath)} && " +
+                        "cp -f ${shellQuote(stagedSource.absolutePath)} ${shellQuote(sourceInRootfs.absolutePath)}"
+            )
+
+            onLog("Installing rooted-desktop compatibility support...\n")
+            if (execChroot(
+                    "DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends gcc libc6-dev",
+                    onLog,
+                ) != 0
+            ) return false
+
+            val buildCommand = """
+                set -e
+                mkdir -p /usr/local/lib /tmp/droiddesk-close-range-build
+                printf 'GLIBC_2.34 { global: close_range; };\n' > /tmp/droiddesk-close-range-build/version.map
+                gcc -shared -fPIC -O2 -Wl,--version-script=/tmp/droiddesk-close-range-build/version.map -o /usr/local/lib/libdroiddesk-close-range.so /usr/local/src/droiddesk/close_range_compat.c
+                chmod 0644 /usr/local/lib/libdroiddesk-close-range.so
+                rm -f /tmp/droiddesk-close-range-build/version.map
+                rmdir /tmp/droiddesk-close-range-build
+            """.trimIndent()
+            val built = execChroot(buildCommand, onLog) == 0
+            if (built) Log.i(TAG, "Installed rooted close_range compatibility library")
+            built
+        } catch (error: Exception) {
+            Log.e(TAG, "Failed to build rooted close_range compatibility library", error)
+            false
+        }
     }
 
     /**
@@ -405,15 +595,30 @@ class ChrootRuntime(private val context: Context) {
         }
 
         mountIfNeeded("/dev", "--bind /dev") { isMounted("dev") }
-        mountIfNeeded("/dev/pts", "--bind /dev/pts") { isMounted("dev/pts") }
+        mountIfNeeded("/dev/pts", "-t devpts devpts") { isMounted("dev/pts") }
         mountIfNeeded("/dev/shm", "-t tmpfs tmpfs") { isMounted("dev/shm") }
         mountIfNeeded("/proc", "--bind /proc") { isMounted("proc") }
         mountIfNeeded("/sys", "--bind /sys") { isMounted("sys") }
         mountIfNeeded("/run", "-t tmpfs tmpfs") { isMounted("run") }
         mountIfNeeded("/tmp", "-t tmpfs tmpfs") { isMounted("tmp") }
 
+        // Fix missing symlinks in Android's /dev for chroot compatibility
+        val devPath = File(rootfsDir, "dev").absolutePath
+        rootShell.exec("ln -snf /proc/self/fd $devPath/fd")
+        rootShell.exec("ln -snf /proc/self/fd/0 $devPath/stdin")
+        rootShell.exec("ln -snf /proc/self/fd/1 $devPath/stdout")
+        rootShell.exec("ln -snf /proc/self/fd/2 $devPath/stderr")
+
         // Create runtime dirs after tmpfs is mounted
         execChroot("mkdir -p /tmp/.X11-unix /tmp/runtime-root /root")
+
+        // Refresh DNS — the phone's network may have changed since the
+        // rootfs was first extracted, and package installs can clobber resolv.conf
+        // Ubuntu makes resolv.conf a symlink to systemd; delete it first so writeText succeeds.
+        val resolvConf = File(rootfsDir, "etc/resolv.conf")
+        resolvConf.delete()
+        resolvConf.writeText("nameserver 8.8.8.8\nnameserver 8.8.4.4\nnameserver 1.1.1.1\n")
+        Log.i(TAG, "Refreshed chroot resolv.conf")
     }
 
     private fun mountIfNeeded(relative: String, mountArgs: String, alreadyMounted: () -> Boolean) {
@@ -475,12 +680,20 @@ class ChrootRuntime(private val context: Context) {
 
     // ── Command execution inside chroot ──
 
+    private fun getPreloadEnv(): String {
+        return if (File(rootfsDir, "usr/local/lib/libdroiddesk-close-range.so").exists()) {
+            "export LD_PRELOAD=/usr/local/lib/libdroiddesk-close-range.so; "
+        } else {
+            ""
+        }
+    }
+
     /**
      * Execute a command inside the chroot as root.
      */
     fun executeCommand(command: String, onOutput: ((String) -> Unit)? = null): String {
         if (!hasRoot()) return "Error: root access required"
-        val wrapped = "export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin; $command"
+        val wrapped = "${getPreloadEnv()}export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin; $command"
         return if (onOutput != null) {
             val code = rootShell.exec("chroot ${rootfsDir.absolutePath} /bin/bash -c ${shellQuote(wrapped)}") { chunk ->
                 onOutput(chunk)
@@ -492,8 +705,9 @@ class ChrootRuntime(private val context: Context) {
     }
 
     private fun execChroot(command: String, onLog: (String) -> Unit = {}): Int {
-        val wrapped = "export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin; $command"
+        val wrapped = "${getPreloadEnv()}export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin; $command"
         val output = rootShell.exec("chroot ${rootfsDir.absolutePath} /bin/bash -c ${shellQuote(wrapped)}") { chunk ->
+            Log.d(TAG, "execChroot: ${chunk.trimEnd()}")
             onLog(chunk)
         }
         Log.d(TAG, "chroot command exit code: $output")
@@ -503,5 +717,10 @@ class ChrootRuntime(private val context: Context) {
     private fun shellQuote(input: String): String {
         // Use a single-quoted string that handles embedded single quotes safely
         return "'" + input.replace("'", "'\"'\"'") + "'"
+    }
+
+    private fun isPackageInstalled(pkg: String): Boolean {
+        // -f='${Status}' returns something like 'install ok installed' if successfully installed
+        return execChroot("dpkg-query -W -f='\${Status}' $pkg 2>/dev/null | grep -q 'install ok installed'") == 0
     }
 }

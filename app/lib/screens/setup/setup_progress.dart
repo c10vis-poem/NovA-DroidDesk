@@ -455,7 +455,7 @@ class _SetupProgressScreenState extends State<SetupProgressScreen> {
         return _PhaseInfo(
           title: state.extractProgress < 0.08
               ? 'Preparing Runtime'
-              : 'Installing Native Linux',
+              : 'Installing Linux',
           message: state.extractStatus.isNotEmpty
               ? state.extractStatus
               : 'Preparing native Termux environment...',

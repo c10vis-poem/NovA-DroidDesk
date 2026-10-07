@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:droiddesk/theme/droid_theme.dart';
-import 'package:droiddesk/screens/setup/de_picker.dart';
+import 'package:droiddesk/screens/setup/setup_progress.dart';
 
-/// Welcome screen — first thing the user sees.
-/// Premium, animated landing with the DroidDesk brand.
 class WelcomeScreen extends StatelessWidget {
   const WelcomeScreen({super.key});
 
@@ -17,27 +15,26 @@ class WelcomeScreen extends StatelessWidget {
         ),
         child: SafeArea(
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 32),
+            padding: const EdgeInsets.fromLTRB(28, 24, 28, 28),
             child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Spacer(flex: 2),
-
-                // ── Logo / Icon ──
+                const Spacer(flex: 3),
                 Container(
-                      width: 100,
-                      height: 100,
+                      width: 82,
+                      height: 82,
                       decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(28),
+                        borderRadius: BorderRadius.circular(22),
                         boxShadow: [
                           BoxShadow(
-                            color: DroidTheme.primary.withValues(alpha: 0.4),
-                            blurRadius: 30,
-                            spreadRadius: 2,
+                            color: DroidTheme.primary.withValues(alpha: 0.22),
+                            blurRadius: 36,
+                            offset: const Offset(0, 14),
                           ),
                         ],
                       ),
                       child: ClipRRect(
-                        borderRadius: BorderRadius.circular(28),
+                        borderRadius: BorderRadius.circular(22),
                         child: Image.asset(
                           'assets/icons/logo.png',
                           fit: BoxFit.cover,
@@ -45,164 +42,65 @@ class WelcomeScreen extends StatelessWidget {
                       ),
                     )
                     .animate()
+                    .fadeIn(duration: 450.ms)
                     .scale(
-                      begin: const Offset(0.5, 0.5),
-                      duration: 600.ms,
-                      curve: Curves.elasticOut,
-                    )
-                    .fadeIn(duration: 400.ms),
-
-                const SizedBox(height: 32),
-
-                // ── Title ──
+                      begin: const Offset(0.92, 0.92),
+                      curve: Curves.easeOutCubic,
+                    ),
+                const SizedBox(height: 34),
                 Text(
-                      'DroidDesk',
-                      style: DroidTheme.headingXl.copyWith(
-                        fontSize: 36,
-                        letterSpacing: -1.0,
-                      ),
+                      'Your desktop.\nNow on Android.',
+                      style: DroidTheme.headingXl,
                     )
                     .animate()
-                    .fadeIn(delay: 200.ms, duration: 500.ms)
-                    .slideY(
-                      begin: 0.3,
-                      duration: 500.ms,
-                      curve: Curves.easeOut,
-                    ),
-
-                const SizedBox(height: 12),
-
-                // ── Tagline ──
+                    .fadeIn(delay: 100.ms, duration: 450.ms)
+                    .slideY(begin: 0.08, curve: Curves.easeOutCubic),
+                const SizedBox(height: 18),
                 Text(
-                      'Full Linux Desktop on Android',
-                      style: DroidTheme.bodyLg.copyWith(
-                        color: DroidTheme.textSecondary,
-                      ),
-                    )
-                    .animate()
-                    .fadeIn(delay: 400.ms, duration: 500.ms)
-                    .slideY(
-                      begin: 0.3,
-                      duration: 500.ms,
-                      curve: Curves.easeOut,
-                    ),
-
-                const SizedBox(height: 8),
-
-                Text(
-                  'Ubuntu · XFCE Desktop · Single App',
-                  style: DroidTheme.bodySm.copyWith(
-                    color: DroidTheme.secondary,
-                    fontWeight: FontWeight.w500,
-                    letterSpacing: 1.5,
-                  ),
-                ).animate().fadeIn(delay: 600.ms, duration: 500.ms),
-
-                const Spacer(flex: 1),
-
-                // ── Feature chips ──
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  alignment: WrapAlignment.center,
-                  children:
-                      [
-                            _featureChip(
-                              Icons.storage_rounded,
-                              'Containerized',
-                            ),
-                            _featureChip(
-                              Icons.security_rounded,
-                              'Root Optional',
-                            ),
-                            _featureChip(
-                              Icons.desktop_mac_rounded,
-                              'Linux Desktop',
-                            ),
-                            _featureChip(
-                              Icons.offline_bolt_rounded,
-                              'Local Execution',
-                            ),
-                          ]
-                          .animate(interval: 100.ms)
-                          .fadeIn(delay: 800.ms, duration: 400.ms)
-                          .slideX(begin: -0.1, duration: 400.ms),
+                  'A complete Desktop Environment that runs locally on your phone.',
+                  style: DroidTheme.bodyLg,
+                ).animate().fadeIn(delay: 180.ms, duration: 450.ms),
+                const SizedBox(height: 28),
+                const _Feature(
+                  icon: Icons.lock_outline_rounded,
+                  text: 'Private and local',
                 ),
-
-                const Spacer(flex: 2),
-
-                // ── Get Started Button ──
+                const SizedBox(height: 14),
+                const _Feature(
+                  icon: Icons.bolt_rounded,
+                  text: 'Optimized for your GPU',
+                ),
+                const SizedBox(height: 14),
+                const _Feature(
+                  icon: Icons.desktop_mac_outlined,
+                  text: 'Desktop Environment, ready to work',
+                ),
+                const Spacer(flex: 4),
                 SizedBox(
-                      width: double.infinity,
-                      height: 56,
-                      child: ElevatedButton(
-                        onPressed: () {
-                          Navigator.of(context).push(
-                            PageRouteBuilder(
-                              pageBuilder:
-                                  (context, animation, secondaryAnimation) =>
-                                      const DEPickerScreen(),
-                              transitionsBuilder:
-                                  (
-                                    context,
-                                    animation,
-                                    secondaryAnimation,
-                                    child,
-                                  ) {
-                                    return FadeTransition(
-                                      opacity: animation,
-                                      child: SlideTransition(
-                                        position:
-                                            Tween<Offset>(
-                                              begin: const Offset(0, 0.05),
-                                              end: Offset.zero,
-                                            ).animate(
-                                              CurvedAnimation(
-                                                parent: animation,
-                                                curve: Curves.easeOut,
-                                              ),
-                                            ),
-                                        child: child,
-                                      ),
-                                    );
-                                  },
-                              transitionDuration: const Duration(
-                                milliseconds: 400,
-                              ),
-                            ),
-                          );
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: DroidTheme.primary,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          elevation: 0,
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Text(
-                              'Set Up Desktop Essentials',
-                              style: DroidTheme.headingSm.copyWith(
-                                color: Colors.white,
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            const Icon(Icons.arrow_forward_rounded, size: 20),
-                          ],
-                        ),
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const SetupProgressScreen(),
                       ),
-                    )
-                    .animate()
-                    .fadeIn(delay: 1200.ms, duration: 500.ms)
-                    .slideY(
-                      begin: 0.3,
-                      duration: 500.ms,
-                      curve: Curves.easeOut,
                     ),
-
-                const SizedBox(height: 48),
+                    child: const Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text('Set Up Desktop Environment'),
+                        SizedBox(width: 8),
+                        Icon(Icons.arrow_forward_rounded, size: 19),
+                      ],
+                    ),
+                  ),
+                ).animate().fadeIn(delay: 350.ms, duration: 450.ms),
+                const SizedBox(height: 14),
+                Center(
+                  child: Text(
+                    'Ubuntu tools · Desktop Environment',
+                    style: DroidTheme.bodySm,
+                  ),
+                ),
               ],
             ),
           ),
@@ -210,29 +108,33 @@ class WelcomeScreen extends StatelessWidget {
       ),
     );
   }
+}
 
-  Widget _featureChip(IconData icon, String label) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-      decoration: BoxDecoration(
-        color: DroidTheme.surfaceLight,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: DroidTheme.surfaceBorder),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 14, color: DroidTheme.secondary),
-          const SizedBox(width: 6),
-          Text(
-            label,
-            style: DroidTheme.bodySm.copyWith(
-              color: DroidTheme.textSecondary,
-              fontWeight: FontWeight.w500,
-            ),
+class _Feature extends StatelessWidget {
+  final IconData icon;
+  final String text;
+
+  const _Feature({required this.icon, required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Container(
+          width: 34,
+          height: 34,
+          decoration: const BoxDecoration(
+            color: DroidTheme.surfaceLight,
+            shape: BoxShape.circle,
           ),
-        ],
-      ),
+          child: Icon(icon, size: 17, color: DroidTheme.primaryLight),
+        ),
+        const SizedBox(width: 13),
+        Text(
+          text,
+          style: DroidTheme.bodyMd.copyWith(color: DroidTheme.textPrimary),
+        ),
+      ],
     );
   }
 }

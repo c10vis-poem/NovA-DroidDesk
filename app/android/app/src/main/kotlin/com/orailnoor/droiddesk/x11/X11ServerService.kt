@@ -31,6 +31,8 @@ class X11ServerService : Service() {
     private val binder = object : IX11Service.Stub() {
         override fun startServer(): Boolean = ensureServerStarted()
 
+        override fun getServerPid(): Int = android.os.Process.myPid()
+
         override fun getXConnection(): ParcelFileDescriptor? {
             if (!ensureServerStarted()) return null
             return cmdEntryPoint.xConnection

@@ -91,10 +91,9 @@ class LinuxRuntime(private val context: Context) {
     /** Qualcomm exposes the Adreno render device through KGSL on Android. */
     private fun hasAdrenoGpu(): Boolean = File("/dev/kgsl-3d0").exists()
 
-    private fun normalizedDesktop(desktopEnv: String): String = when (desktopEnv.lowercase()) {
-        "lxqt", "mate", "kde", "xfce4" -> desktopEnv.lowercase()
-        else -> "xfce4"
-    }
+    // The non-root product ships one supported, touch-tuned desktop.
+    // Ignore legacy callers that may still request an older DE option.
+    private fun normalizedDesktop(@Suppress("UNUSED_PARAMETER") desktopEnv: String): String = "xfce4"
 
     // ── Status ──
 
@@ -1026,9 +1025,9 @@ class LinuxRuntime(private val context: Context) {
         env["GDK_PIXBUF_MODULEDIR"] = "${prefixDir.absolutePath}/lib/gdk-pixbuf-2.0/2.10.0/loaders"
         env["GDK_PIXBUF_MODULE_FILE"] = "${prefixDir.absolutePath}/lib/gdk-pixbuf-2.0/2.10.0/loaders.cache"
 
-        // Mesa is always available. Adreno devices use Turnip + Zink for hardware
-        // rendering; other GPUs use Mesa's software renderer instead of being
-        // forced through an incompatible Freedreno Vulkan ICD.
+        // The official Mesa package contains both Zink and llvmpipe. Qualcomm
+        // devices pair Zink with the Freedreno/Turnip Vulkan ICD; every other
+        // GPU uses llvmpipe and must not inherit a vendor Vulkan selection.
         env["LIBGL_DRIVERS_PATH"] = "${prefixDir.absolutePath}/lib/dri"
         val freedrenoIcd = File(prefixDir, "share/vulkan/icd.d/freedreno_icd.aarch64.json")
         if (hasAdrenoGpu() && freedrenoIcd.exists()) {
@@ -1037,7 +1036,9 @@ class LinuxRuntime(private val context: Context) {
             env["GALLIUM_DRIVER"] = "zink"
         } else {
             env["LIBGL_ALWAYS_SOFTWARE"] = "true"
-            env["MESA_LOADER_DRIVER_OVERRIDE"] = "llvmpipe"
+            // Mesa exposes llvmpipe through swrast_dri.so. "llvmpipe" is the
+            // Gallium driver name, not a DRI loader module name.
+            env["MESA_LOADER_DRIVER_OVERRIDE"] = "swrast"
             env["GALLIUM_DRIVER"] = "llvmpipe"
         }
 
@@ -1052,6 +1053,45 @@ class LinuxRuntime(private val context: Context) {
         }
 
         return env
+    }
+
+    /**
+     * Keep the graphics stack aligned with the device GPU.
+     *
+     * The old TUR mesa-zink package conflicts with and removes the current Mesa
+     * package. That left non-Adreno devices configured for llvmpipe without the
+     * llvmpipe driver. Installing official Mesa on every device provides both
+     * Zink and llvmpipe; only Adreno devices additionally need Turnip/Freedreno.
+     */
+    private fun ensureGraphicsPackages(
+        onProgress: ((Double, String) -> Unit)? = null,
+        progress: Double = 0.72,
+    ): Boolean {
+        if (!isDpkgPackageInstalled("mesa")) {
+            onProgress?.invoke(progress, "Installing Mesa graphics runtime...")
+            if (!installPackageGroup("pkg install -y mesa")) {
+                Log.e(TAG, "Mesa graphics runtime installation failed")
+                return false
+            }
+        }
+
+        if (hasAdrenoGpu()) {
+            val freedrenoIcd = File(
+                prefixDir,
+                "share/vulkan/icd.d/freedreno_icd.aarch64.json",
+            )
+            if (!isDpkgPackageInstalled("mesa-vulkan-icd-freedreno") || !freedrenoIcd.exists()) {
+                onProgress?.invoke(progress, "Installing Adreno Turnip acceleration...")
+                if (!installPackageGroup("pkg install -y mesa-vulkan-icd-freedreno")) {
+                    Log.e(TAG, "Adreno Turnip/Freedreno installation failed")
+                    return false
+                }
+            }
+            Log.i(TAG, "Graphics mode: Mesa Zink with Turnip/Freedreno")
+        } else {
+            Log.i(TAG, "Graphics mode: Mesa llvmpipe software rendering")
+        }
+        return true
     }
 
     // ── Native Package Installation ──
@@ -1331,35 +1371,14 @@ class LinuxRuntime(private val context: Context) {
         }
         onProgress?.invoke(0.46, "Installing $selectedDesktop desktop packages...")
 
-        val desktopPackages = when (selectedDesktop) {
-            "lxqt" -> "lxqt qterminal pcmanfm-qt featherpad"
-            "mate" -> "mate mate-terminal"
-            "kde" -> "plasma-desktop konsole dolphin"
-            else -> "xfce4 xfce4-terminal xfce4-whiskermenu-plugin xfce4-notifyd thunar mousepad"
-        }
+        val desktopPackages =
+            "xfce4 xfce4-terminal xfce4-whiskermenu-plugin xfce4-notifyd thunar mousepad"
         if (!installPackageGroup("pkg install -y $desktopPackages")) {
             Log.e(TAG, "$selectedDesktop package install failed")
             return false
         }
-        onProgress?.invoke(0.70, "Installing Mesa graphics packages...")
-
-        // mesa-zink pulls the Vulkan loader selected by the active Termux repo.
-        // Current repositories use vulkan-loader-generic, which provides and
-        // conflicts with the older vulkan-loader-android package name.
-        if (!installPackageGroup("pkg install -y mesa-zink")) {
-            // Graphics acceleration is optional. A desktop with llvmpipe is much
-            // better UX than failing setup because a vendor Vulkan stack is not
-            // compatible with the current Mesa package set.
-            Log.w(TAG, "Mesa/Zink install unavailable; continuing with software rendering")
-            installPackageGroup("dpkg --configure -a")
-        }
-
-        // Turnip/Freedreno is the hardware path for Qualcomm Adreno. Do not
-        // install or force that ICD on Mali/PowerVR devices.
-        if (hasAdrenoGpu()) {
-            onProgress?.invoke(0.78, "Installing Adreno hardware acceleration...")
-            installPackageGroup("pkg install -y mesa-vulkan-icd-freedreno")
-        }
+        onProgress?.invoke(0.70, "Configuring graphics for this device...")
+        if (!ensureGraphicsPackages(onProgress, 0.74)) return false
 
         val nativeTools = "git wget curl openssh htop python clang"
         onProgress?.invoke(
@@ -1457,6 +1476,13 @@ class LinuxRuntime(private val context: Context) {
         compileSocketHook()
         patchEmbeddedXfcePaths()
 
+        // Repair installations made by older releases, where mesa-zink could
+        // remove Mesa and leave the configured llvmpipe fallback unavailable.
+        if (!ensureGraphicsPackages()) {
+            Log.e(TAG, "Cannot start desktop without a working Mesa runtime")
+            return
+        }
+
         if (selectedDesktop == "xfce4") {
             XfceMobileProfile.install(
                 context = context,
@@ -1544,12 +1570,7 @@ class LinuxRuntime(private val context: Context) {
             return
         }
 
-        val desktopCommand = when (selectedDesktop) {
-            "lxqt" -> "startlxqt"
-            "mate" -> "mate-session"
-            "kde" -> "startplasma-x11"
-            else -> "startxfce4"
-        }
+        val desktopCommand = "startxfce4"
 
         val runScript = """
             # ── Disable AT-SPI accessibility bus ──

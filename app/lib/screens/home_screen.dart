@@ -24,20 +24,19 @@ class HomeScreen extends StatelessWidget {
         child: SafeArea(
           child: CustomScrollView(
             slivers: [
-              // ── App Bar ──
               SliverToBoxAdapter(
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
+                  padding: const EdgeInsets.fromLTRB(24, 18, 18, 0),
                   child: Row(
                     children: [
                       Container(
-                        width: 40,
-                        height: 40,
+                        width: 44,
+                        height: 44,
                         decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: BorderRadius.circular(13),
                         ),
                         child: ClipRRect(
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: BorderRadius.circular(13),
                           child: Image.asset(
                             'assets/icons/logo.png',
                             fit: BoxFit.cover,
@@ -48,9 +47,11 @@ class HomeScreen extends StatelessWidget {
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('DroidDesk', style: DroidTheme.headingSm),
+                          Text('DroidDesk', style: DroidTheme.headingMd),
                           Text(
-                            state.isRunning ? 'Desktop Running' : 'Ready',
+                            state.isRunning
+                                ? 'Desktop Environment is running'
+                                : 'Desktop Environment',
                             style: DroidTheme.bodySm.copyWith(
                               color: state.isRunning
                                   ? DroidTheme.accent
@@ -60,11 +61,18 @@ class HomeScreen extends StatelessWidget {
                         ],
                       ),
                       const Spacer(),
-                      IconButton(
-                        onPressed: () => _showSettings(context),
-                        icon: const Icon(
-                          Icons.settings_rounded,
-                          color: DroidTheme.textMuted,
+                      Container(
+                        decoration: const BoxDecoration(
+                          color: DroidTheme.surfaceLight,
+                          shape: BoxShape.circle,
+                        ),
+                        child: IconButton(
+                          onPressed: () => _showSettings(context),
+                          icon: const Icon(
+                            Icons.settings_outlined,
+                            color: DroidTheme.textSecondary,
+                            size: 21,
+                          ),
                         ),
                       ),
                     ],
@@ -83,13 +91,12 @@ class HomeScreen extends StatelessWidget {
                 ),
               ),
 
-              // ── Quick Actions ──
               SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
                   child: Text(
-                    'QUICK ACTIONS',
-                    style: DroidTheme.label,
+                    'Workspace',
+                    style: DroidTheme.headingMd,
                   ).animate().fadeIn(delay: 200.ms, duration: 400.ms),
                 ),
               ),
@@ -98,138 +105,142 @@ class HomeScreen extends StatelessWidget {
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(24, 12, 24, 0),
                   child: Column(
-                    children: [
-                      // Installation is only actionable when setup is missing.
-                      // Do not show an "Installed" card that can reinstall the DE.
-                      if (!state.isDEInstalled) ...[
-                        _ActionCard(
-                          icon: Icons.download_rounded,
-                          title: 'Install ${state.selectedDE.toUpperCase()}',
-                          subtitle:
-                              'Install desktop environment packages (one-time setup)',
-                          color: DroidTheme.secondary,
-                          onTap: () {
-                            Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (_) => const DEInstallScreen(),
-                              ),
-                            );
-                          },
-                        ),
-                        const SizedBox(height: 10),
-                      ],
-
-                      // ── Launch Desktop / Reconnect ──
-                      if (state.isRunning)
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 10),
-                          child: _ActionCard(
-                            icon: Icons.fullscreen_rounded,
-                            title: 'Return to Desktop',
-                            subtitle:
-                                '${state.selectedDE.toUpperCase()} is currently running in background',
-                            color: DroidTheme.primary,
-                            gradient: DroidTheme.primaryGradient,
-                            onTap: () {
-                              state.launchDesktopActivity();
-                            },
-                          ),
-                        ),
-
-                      _ActionCard(
-                        icon: state.isRunning
-                            ? Icons.stop_circle_rounded
-                            : Icons.desktop_mac_rounded,
-                        title: state.isRunning
-                            ? 'Stop Server'
-                            : 'Launch Desktop',
-                        subtitle: state.isRunning
-                            ? 'Shutdown Linux environment'
-                            : 'Start ${state.selectedDE.toUpperCase()} desktop environment',
-                        color: state.isRunning
-                            ? DroidTheme.error
-                            : DroidTheme.primary,
-                        gradient: state.isRunning
-                            ? null
-                            : DroidTheme.primaryGradient,
-                        onTap: () async {
-                          if (state.isRunning) {
-                            state.stopLinux();
-                          } else {
-                            if (!state.isDEInstalled) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text(
-                                    'No Desktop Environment installed. Please complete setup first.',
-                                  ),
-                                  backgroundColor: DroidTheme.error,
+                    children:
+                        [
+                              // Installation is only actionable when setup is missing.
+                              // Do not show an "Installed" card that can reinstall the DE.
+                              if (!state.isDEInstalled) ...[
+                                _ActionCard(
+                                  icon: Icons.download_rounded,
+                                  title: 'Install Desktop Environment',
+                                  subtitle: 'Prepare your desktop workspace',
+                                  color: DroidTheme.secondary,
+                                  onTap: () {
+                                    Navigator.of(context).push(
+                                      MaterialPageRoute(
+                                        builder: (_) => const DEInstallScreen(),
+                                      ),
+                                    );
+                                  },
                                 ),
-                              );
-                              return;
-                            }
-                            await state.startLinux(mode: 'x11');
-                          }
-                        },
-                      ),
+                                const SizedBox(height: 10),
+                              ],
 
-                      const SizedBox(height: 10),
+                              // ── Launch Desktop / Reconnect ──
+                              if (state.isRunning)
+                                Padding(
+                                  padding: const EdgeInsets.only(bottom: 10),
+                                  child: _ActionCard(
+                                    icon: Icons.fullscreen_rounded,
+                                    title: 'Return to Desktop',
+                                    subtitle:
+                                        'Your session is waiting in the background',
+                                    color: DroidTheme.primary,
+                                    gradient: DroidTheme.primaryGradient,
+                                    onTap: () {
+                                      state.launchDesktopActivity();
+                                    },
+                                  ),
+                                ),
 
-                      // ── Terminal ──
-                      _ActionCard(
-                        icon: Icons.terminal_rounded,
-                        title: 'Terminal',
-                        subtitle:
-                            'Open a Linux shell in the ${state.hasRoot ? 'Ubuntu chroot' : 'native Termux'} environment',
-                        color: DroidTheme.secondary,
-                        onTap: () {
-                          state.useNativeTerminal();
-                          _showTerminal(context, state);
-                        },
-                      ),
+                              _ActionCard(
+                                icon: state.isRunning
+                                    ? Icons.stop_circle_rounded
+                                    : Icons.desktop_mac_rounded,
+                                title: state.isRunning
+                                    ? 'Stop Server'
+                                    : 'Launch Desktop',
+                                subtitle: state.isRunning
+                                    ? 'Shutdown Linux environment'
+                                    : 'Open your Desktop Environment',
+                                color: state.isRunning
+                                    ? DroidTheme.error
+                                    : DroidTheme.primary,
+                                gradient: state.isRunning
+                                    ? null
+                                    : DroidTheme.primaryGradient,
+                                onTap: () async {
+                                  if (state.isRunning) {
+                                    state.stopLinux();
+                                  } else {
+                                    if (!state.isDEInstalled) {
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
+                                        const SnackBar(
+                                          content: Text(
+                                            'Desktop Environment is not installed. Complete setup first.',
+                                          ),
+                                          backgroundColor: DroidTheme.error,
+                                        ),
+                                      );
+                                      return;
+                                    }
+                                    await state.startLinux(mode: 'x11');
+                                  }
+                                },
+                              ),
 
-                      if (!state.hasRoot &&
-                          state.optionalApps['proot_debian'] == true) ...[
-                        const SizedBox(height: 10),
-                        _ActionCard(
-                          icon: Icons.inventory_2_rounded,
-                          title: 'Debian shell',
-                          subtitle:
-                              'Open the optional minimal PRoot compatibility environment',
-                          color: const Color(0xFFD70A53),
-                          onTap: () => _showDebianTerminal(context, state),
-                        ),
-                      ],
+                              const SizedBox(height: 10),
 
-                      const SizedBox(height: 10),
+                              // ── Terminal ──
+                              _ActionCard(
+                                icon: Icons.terminal_rounded,
+                                title: 'Terminal',
+                                subtitle: 'Open the Linux command line',
+                                color: DroidTheme.secondary,
+                                onTap: () {
+                                  state.useNativeTerminal();
+                                  _showTerminal(context, state);
+                                },
+                              ),
 
-                      _ActionCard(
-                        icon: Icons.apps_rounded,
-                        title: 'Add applications',
-                        subtitle:
-                            'Install applications or optional Debian compatibility',
-                        color: DroidTheme.primaryLight,
-                        onTap: () {
-                          Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) => const AppCatalogScreen(),
-                            ),
-                          );
-                        },
-                      ),
+                              if (!state.hasRoot &&
+                                  state.optionalApps['proot_debian'] ==
+                                      true) ...[
+                                const SizedBox(height: 10),
+                                _ActionCard(
+                                  icon: Icons.inventory_2_rounded,
+                                  title: 'Debian shell',
+                                  subtitle:
+                                      'Open the optional minimal PRoot compatibility environment',
+                                  color: const Color(0xFFD70A53),
+                                  onTap: () =>
+                                      _showDebianTerminal(context, state),
+                                ),
+                              ],
 
-                      const SizedBox(height: 10),
-                    ].animate(interval: 80.ms).fadeIn(delay: 300.ms, duration: 400.ms).slideY(begin: 0.05, duration: 400.ms),
+                              const SizedBox(height: 10),
+
+                              _ActionCard(
+                                icon: Icons.apps_rounded,
+                                title: 'Add applications',
+                                subtitle: 'Expand your Linux workspace',
+                                color: DroidTheme.primaryLight,
+                                onTap: () {
+                                  Navigator.of(context).push(
+                                    MaterialPageRoute(
+                                      builder: (_) => const AppCatalogScreen(),
+                                    ),
+                                  );
+                                },
+                              ),
+
+                              const SizedBox(height: 10),
+                            ]
+                            .animate(interval: 80.ms)
+                            .fadeIn(delay: 300.ms, duration: 400.ms)
+                            .slideY(begin: 0.05, duration: 400.ms),
                   ),
                 ),
               ),
 
-              // ── System Info ──
               SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
                   child: Text(
-                    'SYSTEM',
-                    style: DroidTheme.label,
+                    'Device',
+                    style: DroidTheme.headingMd,
                   ).animate().fadeIn(delay: 500.ms, duration: 400.ms),
                 ),
               ),
@@ -246,14 +257,7 @@ class HomeScreen extends StatelessWidget {
                     ),
                     child: Column(
                       children: [
-                        _infoRow(
-                          'Distribution',
-                          _distroLabel(state.installedDistro),
-                        ),
-                        _divider(),
-                        _infoRow('Desktop', state.selectedDE.toUpperCase()),
-                        _divider(),
-                        _infoRow('GPU', state.gpuType),
+                        _infoRow('Workspace', 'Desktop Environment'),
                         _divider(),
                         _infoRow(
                           'Renderer',
@@ -267,18 +271,8 @@ class HomeScreen extends StatelessWidget {
                         ),
                         _divider(),
                         _infoRow(
-                          'Android',
-                          '${state.deviceInfo['androidVersion'] ?? ''} (SDK ${state.deviceInfo['sdkVersion'] ?? ''})',
-                        ),
-                        _divider(),
-                        _infoRow(
-                          'RAM',
-                          '${state.deviceInfo['totalRamMB'] ?? 'N/A'} MB',
-                        ),
-                        _divider(),
-                        _infoRow(
-                          'Storage Free',
-                          '${state.deviceInfo['availableStorageMB'] ?? 'N/A'} MB',
+                          'Storage available',
+                          '${state.deviceInfo['availableStorageMB'] ?? '—'} MB',
                         ),
                       ],
                     ),
@@ -300,7 +294,7 @@ class HomeScreen extends StatelessWidget {
       decoration: BoxDecoration(
         gradient: state.isRunning
             ? const LinearGradient(
-                colors: [Color(0xFF0D2818), Color(0xFF0A1F14)],
+                colors: [Color(0xFF112B1A), Color(0xFF17231B)],
               )
             : DroidTheme.cardGradient,
         borderRadius: BorderRadius.circular(DroidTheme.radiusLg),
@@ -335,7 +329,7 @@ class HomeScreen extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  state.isRunning ? 'Desktop Active' : 'Desktop Idle',
+                  state.isRunning ? 'Desktop active' : 'Ready when you are',
                   style: DroidTheme.headingSm.copyWith(
                     color: state.isRunning
                         ? DroidTheme.accent
@@ -345,8 +339,8 @@ class HomeScreen extends StatelessWidget {
                 const SizedBox(height: 2),
                 Text(
                   state.isRunning
-                      ? '${state.selectedDE.toUpperCase()} · ${_distroLabel(state.installedDistro)}'
-                      : 'Tap "Launch Desktop" to start',
+                      ? 'Desktop Environment · ${_distroLabel(state.installedDistro)}'
+                      : 'Launch Desktop Environment to begin',
                   style: DroidTheme.bodySm,
                 ),
               ],
@@ -428,12 +422,24 @@ class HomeScreen extends StatelessWidget {
                 Navigator.pop(context);
               },
             ),
-            ListTile(
-              leading: const Icon(Icons.refresh, color: DroidTheme.secondary),
-              title: const Text('Reinstall Linux'),
-              subtitle: const Text('Re-download and set up rootfs'),
-              onTap: () {
-                Navigator.pop(context);
+            StatefulBuilder(
+              builder: (context, setState) {
+                final state = context.watch<AppState>();
+                return SwitchListTile(
+                  activeThumbColor: DroidTheme.primary,
+                  secondary: const Icon(
+                    Icons.bolt_outlined,
+                    color: DroidTheme.primary,
+                  ),
+                  title: const Text('Open automatically'),
+                  subtitle: const Text(
+                    'Start Desktop Environment when DroidDesk opens',
+                  ),
+                  value: state.autoStartDesktop,
+                  onChanged: (val) {
+                    state.setAutoStartDesktop(val);
+                  },
+                );
               },
             ),
           ],
@@ -690,51 +696,62 @@ class _ActionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(18),
-        decoration: BoxDecoration(
-          gradient: gradient != null
-              ? LinearGradient(
-                  colors: [
-                    color.withValues(alpha: 0.15),
-                    color.withValues(alpha: 0.05),
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(DroidTheme.radiusLg),
+        child: Container(
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            gradient: gradient != null
+                ? LinearGradient(
+                    colors: [
+                      color.withValues(alpha: 0.18),
+                      color.withValues(alpha: 0.08),
+                    ],
+                  )
+                : null,
+            color: gradient == null ? DroidTheme.cardBg : null,
+            borderRadius: BorderRadius.circular(DroidTheme.radiusLg),
+            border: Border.all(
+              color: gradient == null
+                  ? DroidTheme.surfaceBorder
+                  : color.withValues(alpha: 0.24),
+            ),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(icon, color: color, size: 22),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title, style: DroidTheme.headingSm),
+                    Text(
+                      subtitle,
+                      style: DroidTheme.bodySm,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ],
-                )
-              : null,
-          color: gradient == null ? DroidTheme.cardBg : null,
-          borderRadius: BorderRadius.circular(DroidTheme.radiusMd),
-          border: Border.all(color: color.withValues(alpha: 0.3)),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(12),
+                ),
               ),
-              child: Icon(icon, color: color, size: 22),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(title, style: DroidTheme.headingSm),
-                  Text(
-                    subtitle,
-                    style: DroidTheme.bodySm,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
+              const Icon(
+                Icons.chevron_right_rounded,
+                color: DroidTheme.textDim,
               ),
-            ),
-            Icon(Icons.chevron_right_rounded, color: DroidTheme.textDim),
-          ],
+            ],
+          ),
         ),
       ),
     );

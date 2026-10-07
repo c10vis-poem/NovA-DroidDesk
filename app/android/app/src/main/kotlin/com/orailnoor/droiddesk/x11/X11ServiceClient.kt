@@ -14,9 +14,14 @@ import java.util.concurrent.atomic.AtomicBoolean
 /** Binds a UI-side LorieView to the X server process without running Binder calls on the UI. */
 class X11ServiceClient(
     context: Context,
-    private val onConnected: (ParcelFileDescriptor, ParcelFileDescriptor?) -> Unit,
+    private val onConnected: (Int, ParcelFileDescriptor, ParcelFileDescriptor?) -> Unit,
     private val onError: (String, Throwable?) -> Unit,
 ) {
+    companion object {
+        /** X11 service process currently attached to the UI process's native client. */
+        @Volatile var connectedServerPid: Int = -1
+    }
+
     private val appContext = context.applicationContext
     private val mainHandler = Handler(Looper.getMainLooper())
     private val executor = Executors.newSingleThreadExecutor { runnable ->
@@ -36,6 +41,7 @@ class X11ServiceClient(
                         return@execute
                     }
 
+                    val serverPid = service.serverPid
                     val connectionFd = service.xConnection
                     if (connectionFd == null) {
                         postError("The X11 service returned no client connection", null)
@@ -45,7 +51,7 @@ class X11ServiceClient(
 
                     mainHandler.post {
                         if (active.get()) {
-                            onConnected(connectionFd, logcatFd)
+                            onConnected(serverPid, connectionFd, logcatFd)
                         } else {
                             connectionFd.close()
                             logcatFd?.close()

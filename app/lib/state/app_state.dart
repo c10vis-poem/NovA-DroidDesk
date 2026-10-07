@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:droiddesk/services/platform_bridge.dart';
 
 /// Central state management for the entire DroidDesk app.
@@ -10,7 +11,7 @@ class AppState extends ChangeNotifier {
   String _installedDistro = '';
   String _installedDE = '';
   String _selectedDistro = 'ubuntu';
-  String _selectedDE = 'xfce4';
+  static const String _selectedDE = 'xfce4';
   int _setupStep = 0; // 0=welcome, 1=distro, 2=de, 3=install, 4=done
 
   // ── Download/Install Progress ──
@@ -41,6 +42,10 @@ class AppState extends ChangeNotifier {
 
   // ── Error State ──
   String? _errorMessage;
+
+  // ── Auto Start ──
+  bool _autoStartDesktop = false;
+  bool get autoStartDesktop => _autoStartDesktop;
 
   // ── Getters ──
   bool get isBootstrapped => _isBootstrapped;
@@ -164,6 +169,14 @@ class AppState extends ChangeNotifier {
 
     await refreshStatus();
     await loadDeviceInfo();
+
+    final prefs = await SharedPreferences.getInstance();
+    _autoStartDesktop = prefs.getBool('autoStartDesktop') ?? false;
+
+    if (_autoStartDesktop && isSetupComplete && !_isRunning) {
+      // Auto-start desktop when the app (launcher) boots up
+      startLinux(mode: 'x11');
+    }
   }
 
   Future<void> refreshStatus() async {
@@ -202,15 +215,17 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  void setSelectedDE(String de) {
-    _selectedDE = de;
-    notifyListeners();
-  }
-
   void setSetupStep(int step) {
     _setupStep = step;
     _errorMessage = null;
     notifyListeners();
+  }
+
+  Future<void> setAutoStartDesktop(bool value) async {
+    _autoStartDesktop = value;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('autoStartDesktop', value);
   }
 
   Future<bool> detectRootForSetup() async {

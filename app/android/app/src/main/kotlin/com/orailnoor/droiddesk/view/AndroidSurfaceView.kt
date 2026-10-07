@@ -32,12 +32,18 @@ class AndroidSurfaceView(
         lorieView.setZOrderMediaOverlay(true)
         x11ServiceClient = X11ServiceClient(
             context = context,
-            onConnected = { connectionFd, logcatFd ->
+            onConnected = { serverPid, connectionFd, logcatFd ->
                 try {
-                    LorieView.connect(connectionFd.detachFd())
-                    logcatFd?.let { LorieView.startLogcat(it.detachFd()) }
+                    if (!LorieView.connected() || X11ServiceClient.connectedServerPid != serverPid) {
+                        LorieView.connect(connectionFd.detachFd())
+                        logcatFd?.let { LorieView.startLogcat(it.detachFd()) }
+                        X11ServiceClient.connectedServerPid = serverPid
+                    } else {
+                        connectionFd.close()
+                        logcatFd?.close()
+                    }
                     inputController = X11InputController(lorieView)
-                    Log.i(TAG, "LorieView connected to the :x11 service process")
+                    Log.i(TAG, "LorieView attached to X11 service pid=$serverPid")
                 } catch (error: Throwable) {
                     connectionFd.close()
                     logcatFd?.close()
@@ -46,7 +52,9 @@ class AndroidSurfaceView(
             },
             onError = { message, error -> Log.e(TAG, message, error) },
         )
-        if (!LorieView.connected()) x11ServiceClient.connect()
+        // Always bind so a stale native connected flag cannot hide a restarted
+        // X11 service process.
+        x11ServiceClient.connect()
     }
 
     override fun getView(): View {
